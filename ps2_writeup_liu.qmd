@@ -1,0 +1,212 @@
+---
+title: "Problem Set 2"
+author: "Sijie Liu"
+date: today
+format:
+  html: 
+    toc: true
+    embed-resources: true
+---
+
+**GitHub repo:** <https://github.com/Jessie-Liu731/ec522_ps2_liu>
+
+## Data
+
+The data used in the project is monthly unemployment rate data for the United States and four individual states including Oregon, California, Texas and New York. It is directly pulled from FRED (the Federal Reserve Economic Data database). The time range the data covers is from January 1967 till August 2026.
+
+```{r}
+#| message: false
+#| echo: false
+library(tidyquant)
+library(tidyverse)
+library(knitr)
+```
+
+### The First Few Rows of the Raw Data
+
+```{r}
+#| echo: false
+unemp_raw = read_rds("data/unemp_raw.rds")
+head(unemp_raw,n=10)
+```
+
+### The First Few Rows of the Cleaned and Processed Data
+
+```{r}
+#| echo: false
+######clean up the data
+unemp <- unemp_raw |>
+  rename(unemployment_rate = price) |>
+  mutate(
+    region = case_when(
+      symbol == "UNRATE" ~ "United States",
+      symbol == "ORUR" ~ "Oregon",
+      symbol == "CAUR" ~ "California",
+      symbol == "TXUR" ~ "Texas",
+      symbol == "NYUR" ~ "New York"
+    )
+  )
+##replace Oct 2025 with September 2025 value
+unemp <- unemp |>
+  arrange(region, date) |>
+  group_by(region) |>
+  mutate(
+    unemployment_rate = replace(
+      unemployment_rate,
+      date == as.Date("2025-10-01"),
+      unemployment_rate[date == as.Date("2025-09-01")]
+    )
+  ) |>
+  ungroup()
+
+##add a column called unemployment rate change to unemp equal to the month-over-month change in unemployment rate within each region
+unemp <- unemp |>
+  arrange(region, date) |>
+  group_by(region) |>
+  mutate(unemployment_rate_change = unemployment_rate - lag(unemployment_rate)) |>
+  ungroup()
+head(unemp,n=10)
+```
+
+## Wrangling
+
+### Table for unemp_summary
+
+```{r}
+##compute, for each region, the mean, minimum and maximum unemployment rate over the whole sample
+unemp_summary <- unemp |>
+  group_by(region) |>
+  summarise(
+    mean_rate = mean(unemployment_rate, na.rm = TRUE),
+    min_rate = min(unemployment_rate, na.rm = TRUE),
+    max_rate = max(unemployment_rate, na.rm = TRUE)
+  ) 
+kable(unemp_summary,
+      col.names = c("Region","Average Unemployment Rate", "Lowest Unemployment Rate","Highest Unemployment Rate"),
+      align = 'c',
+      caption = "Unemployment Rate Summary by Region (Jan 1976 - August 2026)" )
+```
+
+### Table for unemp_recent_summary
+
+```{r}
+##create unemp_recent to include observations from January 2015 onward
+unemp_recent <- unemp |>
+  filter(date >= as.Date("2015-01-01")) 
+
+unemp_recent_summary <- unemp_recent |>
+  group_by(region) |>
+  summarise(
+    mean_rate = mean(unemployment_rate, na.rm = TRUE),
+    min_rate = min(unemployment_rate, na.rm = TRUE),
+    max_rate = max(unemployment_rate, na.rm = TRUE)
+  ) 
+
+kable(unemp_recent_summary,
+      col.names = c("Region","Average Unemployment Rate", "Lowest Unemployment Rate","Highest Unemployment Rate"),
+      align = 'c',
+      caption = "Recent Unemployment Rate Summary by Region (Jan 2015 - August 2026)" )
+```
+
+### Table for unemp_top_increases_no_covid
+
+```{r}
+##create a dataset excluding 2020
+unemp_no_covid <- unemp |>
+  filter(year(date) != 2020)
+
+##find the five (plus ties) region-month combinations with the largest month-over-month increase anywhere in the data
+unemp_top_increases_no_covid <- unemp_no_covid |>
+  slice_max(unemployment_rate_change, n = 5, with_ties = TRUE)
+
+kable(unemp_top_increases_no_covid,
+      col.names = c("Region Index", "Date","Unemployment Rate", "Region","Unemployment Rate Increase"),
+      align = 'c',
+      caption = "Top 5 Month-over-Month Unemployment Rate Increase Across Regions (Jan 1976 - August 2026 with 2020 excluded)" )
+```
+
+### Table for unemp_top_decreases_no_covid
+
+```{r}
+##find the five (plus ties) largest month-over-month decreases
+unemp_top_decreases_no_covid <- unemp_no_covid |>
+  slice_min(unemployment_rate_change, n = 5, with_ties = TRUE)
+
+kable(unemp_top_decreases_no_covid,
+      col.names = c("Region Index", "Date","Unemployment Rate", "Region","Unemployment Rate Decrease"),
+      align = 'c',
+      caption = "Top 5 Month-over-Month Unemployment Rate Decrease Across Regions (Jan 1976 - August 2026 with 2020 excluded)" )
+```
+
+## Visualization
+
+### Produce a Line Plot
+
+```{r}
+line_unemp_date <- unemp |>
+  ggplot(aes(x = date, y = unemployment_rate, color = region)) +
+  geom_line() +
+  labs(
+    title = "Unemployment Rate Over Time by Region",
+    x = "Date",
+    y = "Unemployment Rate (%)",
+  ) +
+  theme_minimal()
+line_unemp_date
+```
+
+### Produce Individual Line Plots using facet_wrap()
+
+```{r}
+individual_line_unemp_date <- unemp |>
+  ggplot(aes(x = date, y = unemployment_rate, color = region)) + 
+  geom_line() + 
+  facet_wrap(~region) +
+  labs(
+    title = "Unemployment Rate Over Time for Each Region",
+    x = "Date",
+    y = "Unemployment Rate (%)",
+  ) +
+  theme_minimal()
+individual_line_unemp_date
+```
+
+### Produce a Bar Chart
+
+```{r}
+bar_unemp_region <- unemp_summary |>
+  ggplot(aes(x = fct_reorder(region, mean_rate), y = mean_rate,fill = region)) +
+  geom_col() +
+  labs(
+    title = "Average Unemployment Rate by Region",
+    x = "Region",
+    y = "Average Unemployment Rate (%)",
+  ) +
+  theme_minimal() 
+bar_unemp_region 
+```
+
+### Your Choice
+
+```{r}
+individual_line_unemp_change_date <- unemp |>
+  ggplot(aes(x = date, y = unemployment_rate_change, color = region)) + 
+  geom_line(na.rm = TRUE) + 
+  facet_wrap(~region) +
+  labs(
+    title = "Unemployment Rate Change Over Time for Each Region",
+    x = "Date",
+    y = "Unemployment Rate Change (%)",
+  ) +
+  theme_minimal()
+individual_line_unemp_change_date
+```
+
+My choice of visualization: This is a panel showing the month-over-month change in unemployment rate for each region over time. The plot is organized in facets, with each facet representing a different region, allowing for easy comparison of trends and fluctuations in unemployment rate changes across the United States, Oregon, California, Texas, and New York.
+
+With this panel of line graphs, we could compare the degree of fluctuation across regions in different times. For example, in 2008, Texas experienced the most significant fluctuations (higher than average in United States) when New York experienced less, while, in 2020, New York experienced the most significant fluctuations, higher than the average in United States when Texas experienced less fluctuation this time. The line graphs highlight periods of significant increases or decreases in unemployment rates, providing insights into regional economic conditions and labor market dynamics.
+
+
+## Reflection
+
+With the detailed instructions, most steps unfolded pretty straightforward. The data wrangling and visualization part was a bit challenging but manageable with the help of the ?() command in R and google search. The Quarto is a brand new thing to me so that takes some time more than expected. But after finishing it I found I've been gradually familiarized with the workflow by learning how to read the error message when rendering the file and address those errors. Thus, I think now I feel more comfortable with the overall data analysis workflow than I did before this assignment. This is an incredibly fun experience overall!

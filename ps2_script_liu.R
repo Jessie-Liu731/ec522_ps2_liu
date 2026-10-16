@@ -139,7 +139,7 @@ bar_unemp_region
 ##my choice
 individual_line_unemp_change_date <- unemp |>
   ggplot(aes(x = date, y = unemployment_rate_change, color = region)) + 
-  geom_line() + 
+  geom_line(na.rm = TRUE) + 
   facet_wrap(~region) +
   labs(
     title = "Unemployment Rate Change Over Time for Each Region",
